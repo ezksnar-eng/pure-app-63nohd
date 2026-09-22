@@ -132,7 +132,7 @@
     <!-- استدعاء خدمات Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ⚠️ استبدل هذه الإعدادات بمعلومات مشروعك بـ Firebase ⚠️
         const firebaseConfig = {
@@ -152,8 +152,8 @@
         const loading = document.getElementById('loading');
         const countElem = document.getElementById('count');
 
-        // الاستماع المباشر للتغييرات في جدول "مانغا"
-        const mangaRef = collection(db, "مانغا");
+        // الربط المباشر بجدول manga
+        const mangaRef = collection(db, "manga");
         
         onSnapshot(mangaRef, (snapshot) => {
             mangaGrid.innerHTML = "";
@@ -168,7 +168,7 @@
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 
-                // استخراج الحقول مع قيم افتراضية في حال وجود نقص
+                // استخراج الحقول مع دعم التسميات العربية والانكليزية
                 const title = data.title || data.عنوان || "بدون عنوان";
                 const cover = data.cover || data.غطاء || "https://via.placeholder.com/150x200?text=No+Cover";
                 const type = data.type || "مانهوا";
