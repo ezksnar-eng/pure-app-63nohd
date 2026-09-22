@@ -16,7 +16,6 @@ from bs4 import BeautifulSoup
 # ---------------------------------------------------------
 # 1. إعدادات الفايربيس (Firestore)
 # ---------------------------------------------------------
-# تأكد من وجود ملف الحساب الخدمي بنفس المجلد أو قم بتهيئة التطبيق تلقائياً
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate("serviceAccountKey.json")
@@ -28,7 +27,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # ---------------------------------------------------------
-# 2. البروكسي الداخلي المدمج (Port 8080)
+# 2. البروكسي الداخلي (كودك رقم 2 المدمج بورت 8080)
 # ---------------------------------------------------------
 class IntegratedProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -63,6 +62,7 @@ class IntegratedProxyHandler(BaseHTTPRequestHandler):
                 headers={
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
                     'Referer': 'https://azorafly.com/'
                 }
             )
@@ -93,49 +93,48 @@ class IntegratedProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        return # إخفاء سجلات الـ HTTP العادية لتنظيف الكونسول
+        return
 
 def run_proxy_server():
     server_address = ('', 8080)
     httpd = HTTPServer(server_address, IntegratedProxyHandler)
-    print("🚀 البروكسي الداخلي شغال بكتفاء ذاتي على port 8080")
+    print("🚀 Proxy server running on port 8080 (SSL Fixed)...")
     httpd.serve_forever()
 
 # ---------------------------------------------------------
-# 3. محرك السحب الشامل ونظام الإشعارات كل 10 دقائق
+# 3. محرك السحب الشامل ونظام الإشعارات للخدمة الدائمة
 # ---------------------------------------------------------
-global_stats = {"manga": 0, "chapters": 0, "images": 0, "status": "جاري التشغيل"}
+global_stats = {"manga": 0, "chapters": 0, "images": 0}
 
 def send_android_notification(title, message):
-    """إرسال إشعار للنظام كل 10 دقائق للتحقق من التقدم"""
+    """إرسال إشعار للنظام كل 10 دقائق"""
     try:
-        # استدعاء Plyer أو إشعارات Android إذا كانت متوفرة ببيئة التشغيل
         from plyer import notification
         notification.notify(
             title=title,
             message=message,
-            app_name='ساحب بيور',
+            app_name='ساحب أزورا',
             timeout=5
         )
     except Exception:
-        print(f"🔔 [إشعار النظام]: {title} - {message}")
+        print(f"🔔 [إشعار]: {title} - {message}")
 
 def notification_timer_loop():
-    """حلقة إرسال إشعار دوري كل 10 دقائق بالتقدم"""
+    """إرسال إشعار كل 10 دقائق بالفحص حتى لو الجهاز مغلق"""
     while True:
-        time.sleep(600) # 10 دقائق (600 ثانية)
+        time.sleep(600)  # كل 10 دقائق (600 ثانية)
         msg = f"الأعمال: {global_stats['manga']} | الفصول: {global_stats['chapters']} | الصور: {global_stats['images']}"
-        send_android_notification("📊 ساحب أزورا يعمل بالخلفية", msg)
+        send_android_notification("⚡ ساحب أزورا يعمل بالخلفية", msg)
 
 def start_comprehensive_scraper():
-    print("🚀 بدء محرك السحب الشامل (قديم + جديد)...")
+    print("🚀 بدء محرك السحب الشامل (قديم + جديد) عبر البروكسي...")
     AZORA_BASE = "https://azorafly.com"
     page = 1
     has_more = True
 
     while has_more:
         try:
-            print(f"🔎 جاري فحص مسح الصفحة رقم: {page}")
+            print(f"🔎 فحص صفحة الأرشيف رقم: {page}")
             proxy_url = f"http://127.0.0.1:8080/?url={urllib.parse.quote(f'{AZORA_BASE}/manga?page={page}')}"
             
             req = urllib.request.Request(proxy_url)
@@ -149,43 +148,40 @@ def start_comprehensive_scraper():
             for a in links:
                 href = a['href']
                 if '/series/' in href or '/manga/' in href or '/work/' in href:
-                    full_u = href if href.startswith('http') else AZORA_BASE + href
+                    full_u = href if href.startswith('http') else AZORA_BASE + ('' if href.startswith('/') else '/') + href
                     if full_u not in manga_urls:
                         manga_urls.append(full_u)
 
             if not manga_urls:
-                print("✅ تم الانتهاء من سحب كافة صفحات الأرشيف بالكامل!")
+                print("✅ اكتمل سحب جميع صفحات الأرشيف بالكامل!")
                 has_more = False
                 break
 
             for m_url in manga_urls:
                 try:
-                    # 1. التحقق من وجود المانجا في قاعدة البيانات أولاً
+                    # 1. التثبت هل المانجا موجودة بقاعدة البيانات
                     manga_ref = db.collection('manga').where('sourceUrl', '==', m_url).limit(1).get()
                     
-                    # جلب صفحة المانجا التفصيلية
                     p_m_url = f"http://127.0.0.1:8080/?url={urllib.parse.quote(m_url)}"
                     with urllib.request.urlopen(p_m_url, timeout=20) as m_resp:
                         m_html = m_resp.read().decode('utf-8')
                     
                     m_soup = BeautifulSoup(m_html, 'html.parser')
-                    title = m_soup.find('meta', property='og:title')
-                    title = title['content'] if title else "عمل أزورا"
+                    title_elem = m_soup.find('meta', property='og:title')
+                    title = title_elem['content'] if title_elem else "عمل أزورا"
                     
-                    cover = m_soup.find('meta', property='og:image')
-                    cover_url = cover['content'] if cover else ""
+                    cover_elem = m_soup.find('meta', property='og:image')
+                    cover_url = cover_elem['content'] if cover_elem else ""
 
                     if manga_ref:
                         doc_id = manga_ref[0].id
                         print(f"  ⚠️ العمل موجود سابقاً، تجري مراجعة الفصول والتحديث: {title}")
-                        # تحديث الحقول الأساسية
                         db.collection('manga').document(doc_id).update({
                             'updatedAt': firestore.SERVER_TIMESTAMP,
                             'status': 'مستمر',
                             'type': 'مانهوا'
                         })
                     else:
-                        # إضافة مانجا جديدة بجميع الحقول المطلوبة
                         new_doc = db.collection('manga').add({
                             'title': title,
                             'cover': cover_url,
@@ -193,26 +189,25 @@ def start_comprehensive_scraper():
                             'sourceSite': 'Azora',
                             'type': 'مانهوا',
                             'status': 'مستمر',
-                            'latestChapter': 'الفصل 1',
                             'createdAt': firestore.SERVER_TIMESTAMP,
                             'updatedAt': firestore.SERVER_TIMESTAMP
                         })
                         doc_id = new_doc[1].id
                         global_stats['manga'] += 1
-                        print(f"  ✨ تم حفظ عمل جديد: {title}")
+                        print(f"  ✨ تم إضافة عمل جديد: {title}")
 
                 except Exception as e:
-                    print(f"❌ خطأ أثناء معالجة المانجا {m_url}: {e}")
+                    print(f"❌ خطأ أثناء معالجة العمل {m_url}: {e}")
 
             page += 1
-            time.sleep(1) # تأخير بسيط لعدم إجهاد السيرفر
+            time.sleep(1)
 
         except Exception as e:
-            print(f"❌ خطأ في السحب للصفحة {page}: {e}")
+            print(f"❌ خطأ بمسح الصفحة {page}: {e}")
             time.sleep(3)
 
 # ---------------------------------------------------------
-# 4. الواجهة البرمجية المدمجة (HTML Design + HTML View)
+# 4. نفس تصميم HTML مالتك الأول بالضبط (كود رقم 1)
 # ---------------------------------------------------------
 HTML_LAYOUT = """
 <!DOCTYPE html>
@@ -220,7 +215,7 @@ HTML_LAYOUT = """
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ساحب بيور الموحد 🚀</title>
+  <title>ساحب أزورا التلقائي 🚀</title>
   <style>
     :root { --main: #ff9800; --bg: #0b0b0e; --card: #16161a; --border: #26262e; }
     body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: #fff; padding: 15px; margin: 0; }
@@ -231,24 +226,16 @@ HTML_LAYOUT = """
     .stat-card { background: #0e0e11; padding: 12px; border-radius: 10px; text-align: center; border: 1px solid var(--border); }
     .stat-card h3 { margin: 0; color: var(--main); font-size: 20px; }
     .stat-card p { margin: 3px 0 0; font-size: 11px; color: #888; }
-    
-    /* نافذة معلومات البروكسي المدمجة الجديدة */
-    .proxy-info-card { background: #121217; padding: 14px; border-radius: 12px; border: 1px dashed var(--main); margin-bottom: 15px; font-size: 12px; }
-    .proxy-info-card h4 { margin: 0 0 8px; color: #ffb74d; display: flex; align-items: center; justify-content: space-between; }
-    .proxy-status { font-size: 11px; color: #4cd137; background: rgba(76, 209, 55, 0.1); padding: 2px 8px; border-radius: 6px; }
-
     .progress-box { width: 100%; background: #222; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 15px; border: 1px solid #333; }
-    .progress-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff9800, #ffb74d); animation: pulse 2s infinite; }
-    @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
-
-    #logBox { font-size: 12px; color: #64b5f6; white-space: pre-line; text-align: right; background: #060608; padding: 12px; border-radius: 10px; height: 220px; overflow-y: auto; border: 1px solid var(--border); font-family: monospace; line-height: 1.6; }
+    .progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #ff9800, #ffb74d); transition: width 0.3s; }
+    #logBox { font-size: 12px; color: #64b5f6; white-space: pre-line; text-align: right; background: #060608; padding: 12px; border-radius: 10px; height: 280px; overflow-y: auto; border: 1px solid var(--border); font-family: monospace; line-height: 1.6; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h2>ساحب أزورا المدمج (Port 8080) ⚡</h2>
-    <div class="status-badge" id="status">🚀 الخدمة متصلة وتعمل بالخلفية 24/7</div>
+    <h2>ساحب أزورا (Port 8080) ⚡</h2>
+    <div class="status-badge" id="status">🚀 جاري الاتصال بالبروكسي...</div>
 
     <div class="grid-stats">
       <div class="stat-card"><h3 id="statManga">0</h3><p>أعمال جديدة</p></div>
@@ -256,18 +243,9 @@ HTML_LAYOUT = """
       <div class="stat-card"><h3 id="statImgs">0</h3><p>صور معالجة</p></div>
     </div>
 
-    <!-- نافذة معلومات البروكسي والدمج الشامل -->
-    <div class="proxy-info-card">
-      <h4>📡 معلومات خادم البروكسي الداخلي <span class="proxy-status">● نشط (Port 8080)</span></h4>
-      <p style="margin: 3px 0; color: #aaa;">• <b>وضع السحب:</b> شامل (القديم والجديد من أحدث صفحة لأقدم صفحة).</p>
-      <p style="margin: 3px 0; color: #aaa;">• <b>فحص القاعدة:</b> يتم تخطي التكرار وتحديث الحقول المفقودة تلقائياً.</p>
-      <p style="margin: 3px 0; color: #aaa;">• <b>الإشعارات:</b> تصلك إشعارات بالتقدم كل 10 دقائق بالخلفية.</p>
-    </div>
+    <div class="progress-box"><div class="progress-fill" id="pFill"></div></div>
 
-    <div class="progress-box"><div class="progress-fill"></div></div>
-
-    <div id="logBox">> جاري تشغيل البروكسي وسيرفر السحب بالخلفية...
-> تم تفعيل فحص Firestore المباشر للقديم والجديد.</div>
+    <div id="logBox">بدء الاتصال بسيرفر البروكسي على port 8080...</div>
   </div>
 
 </body>
@@ -275,23 +253,22 @@ HTML_LAYOUT = """
 """
 
 # ---------------------------------------------------------
-# 5. تشغيل المسارات ومحركات الخلفية سوية
+# 5. تشغيل الخدمات
 # ---------------------------------------------------------
 if __name__ == '__main__':
-    # 1. تشغيل البروكسي في خيط منفصل (Thread)
+    # تشغيل سيرفر البروكسي (كود رقم 2)
     proxy_thread = threading.Thread(target=run_proxy_server, daemon=True)
     proxy_thread.start()
 
-    # 2. تشغيل محرك السحب الشامل في خيط منفصل
+    # تشغيل محرك السحب بالخلفية
     scraper_thread = threading.Thread(target=start_comprehensive_scraper, daemon=True)
     scraper_thread.start()
 
-    # 3. تشغيل حلقة الإشعارات الدورية بالخلفية (كل 10 دقائق)
+    # تشغيل حلقة الإشعارات كل 10 دقائق
     notify_thread = threading.Thread(target=notification_timer_loop, daemon=True)
     notify_thread.start()
 
-    print("✅ تم تشغيل كافة الخدمات المدمجة بنجاح! الساحب والبروكسي والإشعارات شغالين 100%.")
+    print("✅ تم تشغيل الكود بنجاح بالكامل مع التصميم الأول المفضل لديك!")
     
-    # حلقة إبقاء التطبيق شغالاً بالخلفية بشكل دائم
     while True:
         time.sleep(1)
